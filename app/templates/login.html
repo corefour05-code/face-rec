@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Login - PSNA Lab Attendance</title>
+<link rel="stylesheet" href="/static/design-system.css" />
+<style>
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    height: auto;
+    background: #E2E8F0;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border-radius: 8px;
+    background: var(--white);
+    box-shadow: var(--box-shadow);
+    text-align: center;
+  }
+  .auth-card h2 { margin: 0 0 1.5rem; }
+  .auth-card form { display: flex; flex-direction: column; gap: 0.9rem; text-align: left; }
+  .auth-card .helper { margin-top: 1.25rem; font-size: 0.8rem; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="auth-card">
+    <h2>Login</h2>
+    {% if error %}<div class="flash-message error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <label>Username *
+        <input type="text" name="username" class="form-control" required />
+      </label>
+      <label>Password *
+        <input type="password" name="password" class="form-control" required />
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Login</button>
+    </form>
+    <div class="helper"</div>
+  </div>
+</body>
+</html>

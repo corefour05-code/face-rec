@@ -1,0 +1,149 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ 'Add New Faculty' if mode == 'add' else 'Edit Faculty' }}{% endblock %}
+{% block content %}
+<h1>{{ 'Add New Faculty' if mode == 'add' else 'Edit Faculty' }}</h1>
+<p style="color: var(--text-muted);">
+  {% if mode == 'add' %}
+    Enter the details below and capture 5 face photos for accurate recognition.
+  {% else %}
+    Update details for {{ faculty.name }}.
+  {% endif %}
+</p>
+
+<form id="faculty-form" class="card" method="post"
+      action="{{ '/faculty/add' if mode == 'add' else '/faculty/' + faculty.faculty_id + '/edit' }}">
+  <div class="grid-2">
+    <label>Faculty ID *
+      <input type="text" name="faculty_id" class="form-control" required
+             value="{{ faculty.faculty_id if faculty else '' }}"
+             {{ 'readonly style="background:#eee;"' | safe if mode == 'edit' else '' }} />
+    </label>
+    <label>Name *
+      <input type="text" name="name" class="form-control" required value="{{ faculty.name if faculty else '' }}" />
+    </label>
+    <label>Department
+      <input type="text" name="department" class="form-control" value="{{ faculty.department if faculty else '' }}" />
+    </label>
+    <label>Designation
+      <input type="text" name="designation" class="form-control" value="{{ faculty.designation if faculty else '' }}" />
+    </label>
+  </div>
+
+  {% if mode == 'add' %}
+  <div style="grid-column: 1 / -1; margin-top: 1.5rem;">
+    <h3>Face Photos <span class="counter-badge" id="add-counter">0/5</span></h3>
+    <div class="step-pills" id="add-steps"></div>
+    <div class="grid-2">
+      <div>
+        <div class="face-capture-box">
+          <video id="add-video" autoplay playsinline muted></video>
+          <div class="face-capture-oval"></div>
+          <div class="face-capture-caption">Align face inside the oval</div>
+        </div>
+      </div>
+      <div>
+        <div class="hint-box">Look in the indicated direction for each step, then click Capture.</div>
+        <button type="button" class="btn btn-primary" id="add-capture-btn">Capture Photo</button>
+        <div class="status" id="add-status"></div>
+        <div class="thumb-grid" id="add-thumbs"></div>
+      </div>
+    </div>
+    <div id="add-hidden-inputs"></div>
+  </div>
+  {% else %}
+  <div style="grid-column: 1 / -1; margin-top: 1.5rem; border: 1px dashed #ced4da; border-radius: 8px; padding: 1rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="margin:0;">Face Encodings</h3>
+      <button type="button" class="btn btn-primary" id="recapture-toggle-btn">Update / Recapture Faces</button>
+    </div>
+    <div id="recapture-collapsed">
+      <p style="color: var(--text-muted); margin-top:0.75rem;">Existing face encodings ({{ embedding_count }}) are stored in the system.</p>
+    </div>
+    <div id="recapture-expanded" style="display:none; margin-top:1rem;">
+      <h4>Face Photos <span class="counter-badge" id="edit-counter">0/2</span></h4>
+      <div class="step-pills" id="edit-steps"></div>
+      <div class="grid-2">
+        <div>
+          <div class="face-capture-box">
+            <video id="edit-video" autoplay playsinline muted></video>
+            <div class="face-capture-oval"></div>
+            <div class="face-capture-caption">Align face inside the oval</div>
+          </div>
+        </div>
+        <div>
+          <div class="hint-box">Recapture 2 fresh photos to add to this faculty member's recognition data.</div>
+          <button type="button" class="btn btn-primary" id="edit-capture-btn">Capture Photo</button>
+          <div class="status" id="edit-status"></div>
+          <div class="thumb-grid" id="edit-thumbs"></div>
+        </div>
+      </div>
+      <div id="edit-hidden-inputs"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div style="border-top: 1px solid #eee; margin-top: 1.5rem; padding-top: 1.5rem; display:flex; justify-content:{{ 'flex-end' if mode == 'add' else 'space-between' }};">
+    {% if mode == 'edit' %}<a class="btn btn-grey" href="/faculty">Back</a>{% endif %}
+    <button type="submit" class="btn btn-primary" id="submit-btn" {{ 'disabled' if mode == 'add' else '' }}>
+      {{ 'Save Faculty Record' if mode == 'add' else 'Update Record' }}
+    </button>
+  </div>
+</form>
+
+<script src="/static/face-capture.js"></script>
+<script>
+{% if mode == 'add' %}
+const addWidget = new FaceCaptureWidget({
+  video: document.getElementById('add-video'),
+  captureBtn: document.getElementById('add-capture-btn'),
+  counterEl: document.getElementById('add-counter'),
+  stepListEl: document.getElementById('add-steps'),
+  thumbGridEl: document.getElementById('add-thumbs'),
+  hiddenContainer: document.getElementById('add-hidden-inputs'),
+  inputPrefix: 'photo_',
+  totalShots: 5,
+  stepLabels: ['1. Look Straight', '2. Turn Slight Left', '3. Turn Slight Right', '4. Tilt Head Up', '5. Step Back'],
+  statusEl: document.getElementById('add-status'),
+  onComplete: () => { document.getElementById('submit-btn').disabled = false; },
+});
+addWidget.start();
+
+{% else %}
+let recaptureWidget = null;
+const toggleBtn = document.getElementById('recapture-toggle-btn');
+toggleBtn.addEventListener('click', async () => {
+  const expanded = document.getElementById('recapture-expanded');
+  const collapsed = document.getElementById('recapture-collapsed');
+  if (expanded.style.display === 'none') {
+    expanded.style.display = 'block';
+    collapsed.style.display = 'none';
+    toggleBtn.textContent = 'Cancel Update';
+    toggleBtn.classList.remove('btn-primary');
+    toggleBtn.classList.add('btn-danger');
+    if (!recaptureWidget) {
+      recaptureWidget = new FaceCaptureWidget({
+        video: document.getElementById('edit-video'),
+        captureBtn: document.getElementById('edit-capture-btn'),
+        counterEl: document.getElementById('edit-counter'),
+        stepListEl: document.getElementById('edit-steps'),
+        thumbGridEl: document.getElementById('edit-thumbs'),
+        hiddenContainer: document.getElementById('edit-hidden-inputs'),
+        inputPrefix: 'photo_',
+        totalShots: 2,
+        stepLabels: ['1. Look Straight', '2. Turn Slight Left'],
+        statusEl: document.getElementById('edit-status'),
+      });
+    }
+    await recaptureWidget.start();
+  } else {
+    expanded.style.display = 'none';
+    collapsed.style.display = 'block';
+    toggleBtn.textContent = 'Update / Recapture Faces';
+    toggleBtn.classList.remove('btn-danger');
+    toggleBtn.classList.add('btn-primary');
+    if (recaptureWidget) { recaptureWidget.stop(); recaptureWidget.reset(); }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base_admin.html" %}
+{% block title %}Old Students{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
+  <div>
+    <h1 style="margin-bottom:0.25rem;">Old Students</h1>
+    <p style="color: var(--text-muted); margin:0;">Graduated or removed students. Attendance history is kept, but they're no longer matched by the scanner.</p>
+  </div>
+</div>
+
+<div class="card" style="background:#F8FAFC; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
+  <form method="get" action="/old-students" style="display:flex; gap:0.75rem; align-items:flex-end;">
+    <label style="flex-grow:1; margin:0;">Search (Name or ID)
+      <input type="text" id="search-input" name="q" value="{{ q or '' }}" class="form-control" placeholder="e.g. Nivi or 23it112" />
+    </label>
+    <button type="submit" class="btn btn-primary">SEARCH</button>
+    <a class="btn btn-outline" href="/old-students">RESET</a>
+  </form>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  <table id="old-students-table">
+    <thead>
+      <tr>
+        <th>Registration ID</th><th>Name</th><th>Department</th><th>Batch</th>
+        <th>Year</th><th>Section</th><th>Archived On</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in students %}
+      <tr>
+        <td>{{ s.roll_no }}</td>
+        <td>{{ s.name }}</td>
+        <td>{{ s.department }}</td>
+        <td>{{ s.batch or '-' }}</td>
+        <td>{{ s.year }}</td>
+        <td>{{ s.section or '-' }}</td>
+        <td>{{ s.archived_at or '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No old students yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+document.getElementById('search-input').addEventListener('keyup', function () {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#old-students-table tbody tr').forEach((row) => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime data — real student/faculty PII, biometric embeddings, secrets.
+# Never commit these; transfer via USB/local network instead of git.
+data/attendance.db
+data/attendance.db-wal
+data/attendance.db-shm
+data/.secret_key
+data/enrollment_photos/
+
+# Logs
+*.log
+
+# Editor/tooling
+.claude/

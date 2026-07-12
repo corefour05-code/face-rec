@@ -1,0 +1,52 @@
+{% extends "base_admin.html" %}
+{% block title %}Manage Users{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem;">
+  <h2 style="display:flex; align-items:center; gap:0.5rem;"><i class="ph ph-users-three"></i>Manage Users</h2>
+  <form method="post" action="/users/add" style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap:0.75rem; align-items:end;">
+    <label style="margin:0;">Username
+      <input type="text" name="username" class="form-control" required />
+    </label>
+    <label style="margin:0;">Password
+      <input type="password" name="password" class="form-control" required />
+    </label>
+    <label style="margin:0;">Role
+      <select name="role" class="form-control">
+        <option value="user">User = Scanner Only</option>
+        <option value="admin">Admin = Full Access</option>
+      </select>
+    </label>
+    <label style="margin:0;">Assigned Lab
+      <select name="lab_id" class="form-control">
+        <option value="">None (Super Admin)</option>
+        {% for lab in labs %}
+        <option value="{{ lab.id }}">{{ lab.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Add User</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Username</th><th>Role</th><th>Assigned Lab</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td><span class="badge {{ 'badge-blue' if u.role == 'admin' else 'badge-teal' }}">{{ u.role | capitalize }}</span></td>
+        <td>{{ u.lab_name or 'All Labs' }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/delete" onsubmit="return confirm('Delete user {{ u.username }}?');">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:2rem;">No users yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

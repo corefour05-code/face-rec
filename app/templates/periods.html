@@ -1,0 +1,55 @@
+{% extends "base_admin.html" %}
+{% block title %}Manage Periods{% endblock %}
+{% block content %}
+<h1>Manage Periods</h1>
+<p style="color: var(--text-muted);">These time slots are shared by every laboratory — edit a period here and it updates everywhere.</p>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <h3>Add New Period</h3>
+  <form method="post" action="/periods/add" style="display:grid; grid-template-columns: 2fr 1fr 1fr auto; gap:0.75rem; align-items:end;">
+    <label style="margin:0;">Period Name
+      <input type="text" name="period_name" class="form-control" placeholder="e.g. 1st Period" required />
+    </label>
+    <label style="margin:0;">Start Time
+      <input type="time" name="start_time" class="form-control" required />
+    </label>
+    <label style="margin:0;">End Time
+      <input type="time" name="end_time" class="form-control" required />
+    </label>
+    <button type="submit" class="btn btn-primary">ADD PERIOD</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Configured Periods</h3>
+  <table>
+    <thead><tr><th>Period Name</th><th>Start Time</th><th>End Time</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for p in periods %}
+      <tr>
+        <td>
+          <form id="edit-{{ p.id }}" method="post" action="/periods/{{ p.id }}/edit"></form>
+          <input type="text" name="period_name" form="edit-{{ p.id }}" class="form-control" value="{{ p.period_name }}" required />
+        </td>
+        <td>
+          <input type="time" name="start_time" form="edit-{{ p.id }}" class="form-control" value="{{ p.start_time }}" required />
+          <div class="hint" style="margin-top:0.25rem;">{{ p.start_time | time12 }}</div>
+        </td>
+        <td>
+          <input type="time" name="end_time" form="edit-{{ p.id }}" class="form-control" value="{{ p.end_time }}" required />
+          <div class="hint" style="margin-top:0.25rem;">{{ p.end_time | time12 }}</div>
+        </td>
+        <td style="display:flex; gap:0.5rem;">
+          <button type="submit" form="edit-{{ p.id }}" class="btn btn-secondary">Save</button>
+          <form method="post" action="/periods/{{ p.id }}/delete" onsubmit="return confirm('Delete period {{ p.period_name }}?');" style="display:inline;">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:2rem;">No periods configured yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>{% block title %}PSNA Lab Attendance{% endblock %}</title>
+<link rel="stylesheet" href="/static/design-system.css" />
+<script src="https://unpkg.com/@phosphor-icons/web"></script>
+<style>
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    height: auto;
+    background: radial-gradient(circle at 30% 20%, #1f2937, #0b0f14 70%);
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .glass-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    animation: fade-in 0.5s ease;
+    color: #f0f0f2;
+    text-align: center;
+  }
+  .glass-card h1, .glass-card h2 { margin: 0 0 0.4rem; color: #fff; }
+  .glass-card .subtitle { color: #9aa0aa; font-size: 0.9rem; margin-bottom: 1.75rem; }
+  .glass-card label { color: #b8bcc4; text-align: left; }
+  .glass-card .form-control {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.2);
+    color: #fff;
+  }
+  .glass-card form { display: flex; flex-direction: column; gap: 0.9rem; }
+  .back-link { display: block; margin-top: 1.25rem; font-size: 0.85rem; color: #9aa0aa; }
+  .back-link:hover { color: #cfd3da; }
+  .hint { font-size: 0.8rem; color: #8a909a; margin-top: -0.5rem; margin-bottom: 0.25rem; text-align: left; }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="glass-card">
+    {% if error %}<div class="flash-message error">{{ error }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
