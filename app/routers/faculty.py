@@ -15,7 +15,6 @@ from app.deps import admin_template_context, require_main_admin
 from app.templating import templates
 from core.image_utils import decode_data_url
 from db.connection import get_connection
-from enrollment.validation import validate_capture
 
 router = APIRouter()
 
@@ -33,6 +32,10 @@ def _collect_photo_data_urls(form) -> list[str]:
 
 
 def _save_faculty_embeddings(conn, faculty_id: str, data_urls: list[str]) -> int:
+    """Each data URL already passed /api/capture/validate client-side, so we
+    only re-detect the face here to extract its embedding — re-running the
+    size/blur gate against an independently re-encoded JPEG would sometimes
+    fail on borderline shots and silently drop an already-approved photo."""
     recognizer = state.get_recognizer()
     saved = 0
     for data_url in data_urls:
@@ -41,10 +44,10 @@ def _save_faculty_embeddings(conn, faculty_id: str, data_urls: list[str]) -> int
         except ValueError:
             continue
         faces = recognizer.app.get(frame)
-        result = validate_capture(frame, faces)
-        if not result.ok:
+        if not faces:
             continue
-        embedding = result.face.normed_embedding.astype(np.float32)
+        face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        embedding = face.normed_embedding.astype(np.float32)
         conn.execute(
             "INSERT INTO faculty_embeddings (faculty_id, embedding, angle_label) VALUES (?,?,?)",
             (faculty_id, embedding.tobytes(), f"shot_{saved + 1}"),
@@ -53,12 +56,7 @@ def _save_faculty_embeddings(conn, faculty_id: str, data_urls: list[str]) -> int
     return saved
 
 
-@router.get("/faculty")
-def faculty_list(request: Request):
-    user, redirect = require_main_admin(request)
-    if redirect:
-        return redirect
-
+def _faculty_list_response(request: Request, user, intent: str | None, active_nav: str, list_path: str):
     q = request.query_params.get("q", "").strip()
     conn = get_connection()
     try:
@@ -70,19 +68,78 @@ def faculty_list(request: Request):
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM faculty ORDER BY faculty_id").fetchall()
+        total_faculty = conn.execute("SELECT COUNT(*) c FROM faculty").fetchone()["c"]
     finally:
         conn.close()
 
+    dept_counts: dict[str, int] = {}
+    for r in rows:
+        dept = r["department"] or "Unassigned"
+        dept_counts[dept] = dept_counts.get(dept, 0) + 1
+
     context = {
         **admin_template_context(user),
-        "active_nav": "faculty",
+        "active_nav": active_nav,
         "faculty": rows,
         "q": q,
-        "intent": request.query_params.get("intent"),
+        "intent": intent,
+        "list_path": list_path,
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
+        "total_faculty": total_faculty,
+        "filtered_count": len(rows),
+        "dept_counts": sorted(dept_counts.items()),
     }
     return templates.TemplateResponse(request, "faculty_list.html", context)
+
+
+@router.get("/faculty/check-id")
+def check_faculty_id(request: Request):
+    """Live duplicate check used by the Add Faculty form. Unlike students,
+    faculty_id duplicates are hard-rejected server-side on submit (no upsert),
+    so this just warns early instead of letting the admin capture 5 photos
+    and only then discover the ID is taken."""
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return JSONResponse({"exists": False}, status_code=403)
+
+    faculty_id = request.query_params.get("faculty_id", "").strip()
+    if not faculty_id:
+        return {"exists": False}
+
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT name FROM faculty WHERE faculty_id=?", (faculty_id,)).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return {"exists": False}
+    return {"exists": True, "name": row["name"]}
+
+
+@router.get("/faculty")
+def faculty_list(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _faculty_list_response(request, user, None, "faculty", "/faculty")
+
+
+@router.get("/faculty/update")
+def faculty_list_update(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _faculty_list_response(request, user, "update", "faculty_update", "/faculty/update")
+
+
+@router.get("/faculty/delete")
+def faculty_list_delete(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _faculty_list_response(request, user, "delete", "faculty_delete", "/faculty/delete")
 
 
 @router.get("/faculty/add")

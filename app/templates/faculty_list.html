@@ -17,13 +17,34 @@
 {% endif %}
 
 <div class="card" style="background:#F8FAFC; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
-  <form method="get" action="/faculty" style="display:flex; gap:0.75rem; align-items:flex-end;">
+  <form method="get" action="{{ list_path or '/faculty' }}" style="display:flex; gap:0.75rem; align-items:flex-end;">
     <label style="flex-grow:1; margin:0;">Search Faculty (Name or ID)
       <input type="text" id="search-input" name="q" value="{{ q or '' }}" class="form-control" placeholder="e.g. Dr. Rao or FAC001" />
     </label>
     <button type="submit" class="btn btn-primary">SEARCH</button>
-    <a class="btn btn-outline" href="/faculty">RESET</a>
+    <a class="btn btn-outline" href="{{ list_path or '/faculty' }}">RESET</a>
   </form>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div style="display:flex; flex-wrap:wrap; gap:1.75rem; align-items:flex-start;">
+    <div>
+      <strong style="font-size:1.4rem; color:var(--primary-blue);">{{ total_faculty }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Total Registered</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ filtered_count }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Matching Filter</div>
+    </div>
+    {% if dept_counts %}
+    <div style="flex-grow:1; min-width:180px;">
+      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">By Department</div>
+      <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+        {% for d, c in dept_counts %}<span class="badge badge-purple">{{ d }}: {{ c }}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card" style="padding:0; overflow:hidden;">

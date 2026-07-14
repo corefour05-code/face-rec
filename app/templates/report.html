@@ -45,12 +45,41 @@
   </form>
 </div>
 
+<div class="card" style="margin-bottom:1.5rem;">
+  <div style="display:flex; flex-wrap:wrap; gap:1.75rem; align-items:flex-start;">
+    <div>
+      <strong style="font-size:1.4rem; color:var(--primary-blue);">{{ total_records }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Total Records</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ unique_students }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Unique Students</div>
+    </div>
+    {% if year_counts %}
+    <div style="flex-grow:1; min-width:180px;">
+      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">By Year</div>
+      <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+        {% for y, c in year_counts %}<span class="badge badge-blue">Year {{ y }}: {{ c }}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if section_counts %}
+    <div style="flex-grow:1; min-width:180px;">
+      <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">By Section</div>
+      <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+        {% for s, c in section_counts %}<span class="badge badge-teal">{{ s }}: {{ c }}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card" style="padding:0; overflow:hidden;">
   <div style="overflow-x:auto;">
     <table id="report-table" style="white-space:nowrap;">
       <thead>
         <tr>
-          <th>S.No</th><th>ID</th><th>Name</th><th>Section</th><th>Department</th><th>Batch</th><th>Year</th>
+          <th>S.No</th><th>ID</th><th>Name</th><th>Section</th><th>Batch</th><th>Year</th>
           <th>Laboratory</th><th>In Time</th><th>Period In</th><th>In Date</th>
           <th>Out Time</th><th>Period Out</th><th>Out Date</th><th>Action</th>
         </tr>
@@ -62,7 +91,6 @@
           <td>{{ r.roll_no }}</td>
           <td>{{ r.name }}</td>
           <td>{{ r.section or '-' }}</td>
-          <td>{{ r.department }}</td>
           <td>{{ r.batch or '-' }}</td>
           <td>{{ r.year }}</td>
           <td><span class="badge badge-{{ lab_badge_color(r.lab_id) }}">{{ r.lab_name }}</span></td>
@@ -75,7 +103,7 @@
           <td><button class="btn btn-danger" onclick="deleteStudentRecord('{{ r.roll_no }}')"><i class="ph ph-trash"></i></button></td>
         </tr>
         {% else %}
-        <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
+        <tr><td colspan="14" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
           <i class="ph ph-file-search" style="font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
           No attendance records found for the selected dates.
         </td></tr>
@@ -92,9 +120,9 @@ function liveFilter() {
   const q = document.getElementById('filter-q').value.toLowerCase();
   document.querySelectorAll('#report-table tbody tr').forEach((row) => {
     const cells = row.querySelectorAll('td');
-    if (cells.length < 15) return;
+    if (cells.length < 14) return;
     const rowSection = cells[3].textContent.toLowerCase();
-    const rowYear = cells[6].textContent.toLowerCase();
+    const rowYear = cells[5].textContent.toLowerCase();
     const rowText = row.textContent.toLowerCase();
     const matches = (!section || rowSection.includes(section))
       && (!year || rowYear.includes(year))

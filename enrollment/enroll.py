@@ -31,7 +31,7 @@ from core.face_engine import get_face_app
 from db.connection import get_connection
 from enrollment.validation import validate_capture
 
-ROLL_NO_PATTERN = re.compile(r"^\d{2}[a-z]{2}\d{3}$")
+ROLL_NO_PATTERN = re.compile(r"^\d+[a-z]+\d+$")
 WINDOW_NAME = "Enrollment - SPACE=capture  ESC=cancel"
 
 
@@ -39,7 +39,8 @@ def validate_roll_no(roll_no: str) -> str:
     roll_no = roll_no.strip().lower()
     if not ROLL_NO_PATTERN.match(roll_no):
         raise ValueError(
-            f"roll_no '{roll_no}' doesn't match expected format (e.g. 23it112: 2 digits, 2 letters, 3 digits)"
+            f"roll_no '{roll_no}' doesn't match expected format "
+            "(digits, then letters, then digits - e.g. 23it112 or 25itle123)"
         )
     return roll_no
 

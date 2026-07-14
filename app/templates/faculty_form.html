@@ -14,9 +14,12 @@
       action="{{ '/faculty/add' if mode == 'add' else '/faculty/' + faculty.faculty_id + '/edit' }}">
   <div class="grid-2">
     <label>Faculty ID *
-      <input type="text" name="faculty_id" class="form-control" required
+      <input type="text" name="faculty_id" id="faculty_id-input" class="form-control" required
              value="{{ faculty.faculty_id if faculty else '' }}"
              {{ 'readonly style="background:#eee;"' | safe if mode == 'edit' else '' }} />
+      {% if mode == 'add' %}
+      <div id="faculty-id-warning" class="status err" style="display:none;"></div>
+      {% endif %}
     </label>
     <label>Name *
       <input type="text" name="name" class="form-control" required value="{{ faculty.name if faculty else '' }}" />
@@ -93,6 +96,13 @@
 <script src="/static/face-capture.js"></script>
 <script>
 {% if mode == 'add' %}
+let photosDone = false;
+let facultyIdDuplicate = false;
+
+function updateSubmitState() {
+  document.getElementById('submit-btn').disabled = !photosDone || facultyIdDuplicate;
+}
+
 const addWidget = new FaceCaptureWidget({
   video: document.getElementById('add-video'),
   captureBtn: document.getElementById('add-capture-btn'),
@@ -104,9 +114,39 @@ const addWidget = new FaceCaptureWidget({
   totalShots: 5,
   stepLabels: ['1. Look Straight', '2. Turn Slight Left', '3. Turn Slight Right', '4. Tilt Head Up', '5. Step Back'],
   statusEl: document.getElementById('add-status'),
-  onComplete: () => { document.getElementById('submit-btn').disabled = false; },
+  onComplete: () => { photosDone = true; updateSubmitState(); },
 });
 addWidget.start();
+
+const facultyIdInput = document.getElementById('faculty_id-input');
+const facultyIdWarning = document.getElementById('faculty-id-warning');
+
+async function checkFacultyId() {
+  const value = facultyIdInput.value.trim();
+  facultyIdDuplicate = false;
+  facultyIdWarning.style.display = 'none';
+  if (!value) { updateSubmitState(); return; }
+
+  try {
+    const res = await fetch(`/faculty/check-id?faculty_id=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    if (data.exists) {
+      facultyIdDuplicate = true;
+      facultyIdWarning.textContent = `Already exists: ${data.name}. Choose a different Faculty ID or edit the existing record.`;
+      facultyIdWarning.style.display = 'block';
+    }
+  } catch (e) {
+    facultyIdDuplicate = false;
+  }
+  updateSubmitState();
+}
+
+facultyIdInput.addEventListener('blur', checkFacultyId);
+facultyIdInput.addEventListener('input', () => {
+  facultyIdDuplicate = false;
+  facultyIdWarning.style.display = 'none';
+  updateSubmitState();
+});
 
 {% else %}
 let recaptureWidget = null;

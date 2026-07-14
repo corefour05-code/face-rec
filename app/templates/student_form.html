@@ -14,9 +14,16 @@
       action="{{ '/students/add' if mode == 'add' else '/students/' + student.roll_no + '/edit' }}">
   <div class="grid-2">
     <label>Student ID / Register Number *
-      <input type="text" name="roll_no" class="form-control" required
+      <input type="text" name="roll_no" id="roll_no-input" class="form-control" required
              value="{{ student.roll_no if student else '' }}"
              {{ 'readonly style="background:#eee;"' | safe if mode == 'edit' else '' }} />
+      {% if mode == 'add' %}
+      <div id="roll-no-warning" class="status err" style="display:none;"></div>
+      <span id="roll-no-confirm-wrap" style="display:none; align-items:center; gap:0.4rem; font-size:0.85rem; margin-top:0.3rem; cursor:pointer;" onclick="document.getElementById('roll-no-confirm').click()">
+        <input type="checkbox" id="roll-no-confirm" style="width:auto; margin:0;" onclick="event.stopPropagation()" />
+        <span>I understand — proceed anyway</span>
+      </span>
+      {% endif %}
     </label>
     <label>Name *
       <input type="text" name="name" class="form-control" required value="{{ student.name if student else '' }}" />
@@ -100,6 +107,14 @@
 <script src="/static/face-capture.js"></script>
 <script>
 {% if mode == 'add' %}
+let photosDone = false;
+let rollNoDuplicate = false;
+let rollNoConfirmed = false;
+
+function updateSubmitState() {
+  document.getElementById('submit-btn').disabled = !photosDone || (rollNoDuplicate && !rollNoConfirmed);
+}
+
 const addWidget = new FaceCaptureWidget({
   video: document.getElementById('add-video'),
   captureBtn: document.getElementById('add-capture-btn'),
@@ -117,13 +132,57 @@ const addWidget = new FaceCaptureWidget({
     '5. Tilt Down',
   ],
   statusEl: document.getElementById('add-status'),
-  onComplete: () => { document.getElementById('submit-btn').disabled = false; },
+  onComplete: () => { photosDone = true; updateSubmitState(); },
 });
 addWidget.start();
 document.getElementById('add-capture-btn').addEventListener('click', () => {
   setTimeout(() => {
     document.getElementById('add-capture-label').textContent = addWidget.counterEl.textContent;
   }, 50);
+});
+
+const rollNoInput = document.getElementById('roll_no-input');
+const rollNoWarning = document.getElementById('roll-no-warning');
+const rollNoConfirmWrap = document.getElementById('roll-no-confirm-wrap');
+const rollNoConfirmCheckbox = document.getElementById('roll-no-confirm');
+
+async function checkRollNo() {
+  const value = rollNoInput.value.trim();
+  rollNoDuplicate = false;
+  rollNoWarning.style.display = 'none';
+  rollNoConfirmWrap.style.display = 'none';
+  if (!value) { updateSubmitState(); return; }
+
+  try {
+    const res = await fetch(`/students/check-roll-no?roll_no=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    if (data.exists) {
+      rollNoDuplicate = true;
+      rollNoConfirmed = false;
+      rollNoConfirmCheckbox.checked = false;
+      rollNoWarning.textContent = data.archived
+        ? `Already exists (archived): ${data.name}. Saving will restore and overwrite this record.`
+        : `Already exists: ${data.name}. Saving will overwrite their existing details.`;
+      rollNoWarning.style.display = 'block';
+      rollNoConfirmWrap.style.display = 'inline-flex';
+    }
+  } catch (e) {
+    rollNoDuplicate = false;
+  }
+  updateSubmitState();
+}
+
+rollNoInput.addEventListener('blur', checkRollNo);
+rollNoInput.addEventListener('input', () => {
+  rollNoConfirmed = false;
+  rollNoDuplicate = false;
+  rollNoConfirmWrap.style.display = 'none';
+  rollNoWarning.style.display = 'none';
+  updateSubmitState();
+});
+rollNoConfirmCheckbox.addEventListener('change', () => {
+  rollNoConfirmed = rollNoConfirmCheckbox.checked;
+  updateSubmitState();
 });
 
 {% else %}

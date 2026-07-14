@@ -22,7 +22,7 @@ from db.connection import get_connection
 router = APIRouter()
 
 REPORT_COLUMNS = [
-    "S.No", "ID", "Name", "Section", "Department", "Batch", "Year",
+    "S.No", "ID", "Name", "Section", "Batch", "Year",
     "Laboratory", "In Time", "Period In", "In Date", "Out Time", "Period Out", "Out Date",
 ]
 
@@ -45,7 +45,7 @@ def _build_filters(request: Request, user: dict):
 
 def _fetch_rows(conn, from_date, to_date, lab_id, section, year, q):
     sql = (
-        "SELECT s.roll_no, s.name, s.section, s.department, s.batch, s.year, "
+        "SELECT s.roll_no, s.name, s.section, s.batch, s.year, "
         "l.id as lab_id, l.name as lab_name, "
         "a.in_time, pin.period_name as period_in, a.session_date as in_date, "
         "a.out_time, pout.period_name as period_out, a.out_date "
@@ -92,6 +92,14 @@ def lab_report(request: Request):
     finally:
         conn.close()
 
+    unique_students = len({r["roll_no"] for r in rows})
+    year_counts: dict[int, int] = {}
+    section_counts: dict[str, int] = {}
+    for r in rows:
+        year_counts[r["year"]] = year_counts.get(r["year"], 0) + 1
+        sec = r["section"] or "Unassigned"
+        section_counts[sec] = section_counts.get(sec, 0) + 1
+
     context = {
         **admin_template_context(user),
         "active_nav": "report",
@@ -105,6 +113,10 @@ def lab_report(request: Request):
         "year": year,
         "q": q,
         "query_string": request.url.query,
+        "total_records": len(rows),
+        "unique_students": unique_students,
+        "year_counts": sorted(year_counts.items()),
+        "section_counts": sorted(section_counts.items()),
     }
     return templates.TemplateResponse(request, "report.html", context)
 
@@ -130,7 +142,7 @@ def lab_report_pdf(request: Request):
     data = [REPORT_COLUMNS]
     for i, r in enumerate(rows, start=1):
         data.append([
-            str(i), r["roll_no"], r["name"], r["section"] or "-", r["department"],
+            str(i), r["roll_no"], r["name"], r["section"] or "-",
             r["batch"] or "-", str(r["year"]), r["lab_name"],
             format_datetime_time_12h(r["in_time"]), r["period_in"] or "-", r["in_date"] or "-",
             format_datetime_time_12h(r["out_time"]), r["period_out"] or "-", r["out_date"] or "-",

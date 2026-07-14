@@ -15,7 +15,6 @@ from app.templating import templates
 from core.image_utils import decode_data_url
 from db.connection import get_connection
 from enrollment.enroll import upsert_student, validate_roll_no
-from enrollment.validation import validate_capture
 
 router = APIRouter()
 
@@ -33,6 +32,10 @@ def _collect_photo_data_urls(form) -> list[str]:
 
 
 def _save_embeddings(conn, roll_no: str, data_urls: list[str]) -> int:
+    """Each data URL already passed /api/capture/validate client-side, so we
+    only re-detect the face here to extract its embedding — re-running the
+    size/blur gate against an independently re-encoded JPEG would sometimes
+    fail on borderline shots and silently drop an already-approved photo."""
     recognizer = state.get_recognizer()
     saved = 0
     for data_url in data_urls:
@@ -41,10 +44,10 @@ def _save_embeddings(conn, roll_no: str, data_urls: list[str]) -> int:
         except ValueError:
             continue
         faces = recognizer.app.get(frame)
-        result = validate_capture(frame, faces)
-        if not result.ok:
+        if not faces:
             continue
-        embedding = result.face.normed_embedding.astype(np.float32)
+        face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        embedding = face.normed_embedding.astype(np.float32)
         conn.execute(
             "INSERT INTO embeddings (roll_no, embedding, angle_label) VALUES (?,?,?)",
             (roll_no, embedding.tobytes(), f"recapture_{saved + 1}"),
@@ -53,12 +56,7 @@ def _save_embeddings(conn, roll_no: str, data_urls: list[str]) -> int:
     return saved
 
 
-@router.get("/students")
-def students_list(request: Request):
-    user, redirect = require_main_admin(request)
-    if redirect:
-        return redirect
-
+def _students_list_response(request: Request, user, intent: str | None, active_nav: str, list_path: str):
     q = request.query_params.get("q", "").strip()
     section = request.query_params.get("section", "").strip()
     year = request.query_params.get("year", "").strip()
@@ -91,17 +89,70 @@ def students_list(request: Request):
 
     context = {
         **admin_template_context(user),
-        "active_nav": "students",
+        "active_nav": active_nav,
         "students": rows,
         "q": q,
         "section": section,
         "year": year,
         "sections": sections,
-        "intent": request.query_params.get("intent"),
+        "intent": intent,
+        "list_path": list_path,
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
+        "student_count": len(rows),
     }
     return templates.TemplateResponse(request, "students_list.html", context)
+
+
+@router.get("/students/check-roll-no")
+def check_roll_no(request: Request):
+    """Live duplicate check used by the Add Student form: fires on blur of the
+    roll_no field so the admin finds out *before* filling in the rest of the
+    form and capturing photos, instead of after submit silently overwriting
+    an existing record via upsert_student()."""
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return JSONResponse({"exists": False}, status_code=403)
+
+    roll_no = request.query_params.get("roll_no", "").strip().lower()
+    if not roll_no:
+        return {"exists": False}
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT name, archived_at FROM students WHERE roll_no=?", (roll_no,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return {"exists": False}
+    return {"exists": True, "name": row["name"], "archived": row["archived_at"] is not None}
+
+
+@router.get("/students")
+def students_list(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _students_list_response(request, user, None, "students", "/students")
+
+
+@router.get("/students/update")
+def students_list_update(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _students_list_response(request, user, "update", "student_update", "/students/update")
+
+
+@router.get("/students/delete")
+def students_list_delete(request: Request):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+    return _students_list_response(request, user, "delete", "student_delete", "/students/delete")
 
 
 @router.get("/students/add")
