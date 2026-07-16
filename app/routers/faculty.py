@@ -56,6 +56,27 @@ def _save_faculty_embeddings(conn, faculty_id: str, data_urls: list[str]) -> int
     return saved
 
 
+def _rename_faculty_id(conn, old_faculty_id: str, new_faculty_id: str) -> None:
+    """Change a faculty member's primary key and repoint their embeddings/
+    attendance rows to match — same PRAGMA foreign_keys=OFF technique used for
+    student roll_no renames (see students.py's _rename_roll_no)."""
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute(
+            "UPDATE faculty SET faculty_id=? WHERE faculty_id=?", (new_faculty_id, old_faculty_id)
+        )
+        conn.execute(
+            "UPDATE faculty_embeddings SET faculty_id=? WHERE faculty_id=?",
+            (new_faculty_id, old_faculty_id),
+        )
+        conn.execute(
+            "UPDATE faculty_attendance SET faculty_id=? WHERE faculty_id=?",
+            (new_faculty_id, old_faculty_id),
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _faculty_list_response(request: Request, user, intent: str | None, active_nav: str, list_path: str):
     q = request.query_params.get("q", "").strip()
     conn = get_connection()
@@ -233,20 +254,45 @@ async def faculty_edit_submit(request: Request, faculty_id: str):
     name = form.get("name", "").strip()
     department = form.get("department", "").strip() or None
     designation = form.get("designation", "").strip() or None
+
+    new_faculty_id = form.get("faculty_id", faculty_id).strip()
+    if not new_faculty_id:
+        return RedirectResponse(
+            f"/faculty/{faculty_id}/edit?error=Faculty ID is required", status_code=302
+        )
+
     photo_urls = _collect_photo_data_urls(form)
 
     conn = get_connection()
     try:
+        if new_faculty_id != faculty_id:
+            collision = conn.execute(
+                "SELECT faculty_id FROM faculty WHERE faculty_id=?", (new_faculty_id,)
+            ).fetchone()
+            if collision:
+                return RedirectResponse(
+                    f"/faculty/{faculty_id}/edit?error=ID {new_faculty_id} is already used by "
+                    "another faculty member.",
+                    status_code=302,
+                )
+            _rename_faculty_id(conn, faculty_id, new_faculty_id)
+
         conn.execute(
             "UPDATE faculty SET name=?, department=?, designation=? WHERE faculty_id=?",
-            (name, department, designation, faculty_id),
+            (name, department, designation, new_faculty_id),
         )
-        saved = _save_faculty_embeddings(conn, faculty_id, photo_urls) if photo_urls else 0
+        saved = _save_faculty_embeddings(conn, new_faculty_id, photo_urls) if photo_urls else 0
         conn.commit()
     finally:
         conn.close()
 
-    msg = f"Updated {faculty_id}." + (f" Added {saved} new face photos." if photo_urls else "")
+    if photo_urls or new_faculty_id != faculty_id:
+        state.get_recognizer().reload_embeddings()
+
+    msg = f"Updated {new_faculty_id}."
+    if new_faculty_id != faculty_id:
+        msg = f"Renamed {faculty_id} to {new_faculty_id}."
+    msg += f" Added {saved} new face photos." if photo_urls else ""
     return RedirectResponse(f"/faculty?success={msg}", status_code=302)
 
 

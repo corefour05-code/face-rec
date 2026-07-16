@@ -15,11 +15,8 @@
   <div class="grid-2">
     <label>Faculty ID *
       <input type="text" name="faculty_id" id="faculty_id-input" class="form-control" required
-             value="{{ faculty.faculty_id if faculty else '' }}"
-             {{ 'readonly style="background:#eee;"' | safe if mode == 'edit' else '' }} />
-      {% if mode == 'add' %}
+             value="{{ faculty.faculty_id if faculty else '' }}" />
       <div id="faculty-id-warning" class="status err" style="display:none;"></div>
-      {% endif %}
     </label>
     <label>Name *
       <input type="text" name="name" class="form-control" required value="{{ faculty.name if faculty else '' }}" />
@@ -149,6 +146,26 @@ facultyIdInput.addEventListener('input', () => {
 });
 
 {% else %}
+const originalFacultyId = {{ faculty.faculty_id | tojson }};
+const facultyIdInput = document.getElementById('faculty_id-input');
+const facultyIdWarning = document.getElementById('faculty-id-warning');
+
+async function checkFacultyIdRename() {
+  const value = facultyIdInput.value.trim();
+  facultyIdWarning.style.display = 'none';
+  if (!value || value === originalFacultyId) { return; }
+
+  try {
+    const res = await fetch(`/faculty/check-id?faculty_id=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    if (data.exists) {
+      facultyIdWarning.textContent = `ID already used by ${data.name} — choose a different ID.`;
+      facultyIdWarning.style.display = 'block';
+    }
+  } catch (e) { /* non-fatal, server re-checks on submit */ }
+}
+facultyIdInput.addEventListener('blur', checkFacultyIdRename);
+
 let recaptureWidget = null;
 const toggleBtn = document.getElementById('recapture-toggle-btn');
 toggleBtn.addEventListener('click', async () => {

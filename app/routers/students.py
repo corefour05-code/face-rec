@@ -56,12 +56,32 @@ def _save_embeddings(conn, roll_no: str, data_urls: list[str]) -> int:
     return saved
 
 
+def _rename_roll_no(conn, old_roll_no: str, new_roll_no: str) -> None:
+    """Change a student's primary key and repoint their embeddings/attendance
+    rows to match. roll_no is referenced by FK from embeddings/attendance with
+    no ON UPDATE CASCADE, so a straight UPDATE would fail (or orphan rows)
+    under enforcement — same PRAGMA foreign_keys=OFF technique already used
+    for the periods-rescoping migration in db/init_db.py."""
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("UPDATE students SET roll_no=? WHERE roll_no=?", (new_roll_no, old_roll_no))
+        conn.execute("UPDATE embeddings SET roll_no=? WHERE roll_no=?", (new_roll_no, old_roll_no))
+        conn.execute("UPDATE attendance SET roll_no=? WHERE roll_no=?", (new_roll_no, old_roll_no))
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _students_list_response(request: Request, user, intent: str | None, active_nav: str, list_path: str):
     q = request.query_params.get("q", "").strip()
     section = request.query_params.get("section", "").strip()
     year = request.query_params.get("year", "").strip()
 
-    sql = "SELECT * FROM students WHERE archived_at IS NULL"
+    # Only students with at least one face encoding count as "registered" here —
+    # a self-registered-details-only entry (via /register) stays invisible in
+    # Students Info until their photos are actually captured.
+    has_embeddings = "EXISTS (SELECT 1 FROM embeddings e WHERE e.roll_no = students.roll_no)"
+
+    sql = f"SELECT * FROM students WHERE archived_at IS NULL AND {has_embeddings}"
     params: list = []
     if q:
         sql += " AND (roll_no LIKE ? OR name LIKE ?)"
@@ -80,7 +100,8 @@ def _students_list_response(request: Request, user, intent: str | None, active_n
         sections = [
             r["section"] for r in conn.execute(
                 "SELECT DISTINCT section FROM students "
-                "WHERE archived_at IS NULL AND section IS NOT NULL AND section != '' "
+                f"WHERE archived_at IS NULL AND {has_embeddings} "
+                "AND section IS NOT NULL AND section != '' "
                 "ORDER BY section"
             ).fetchall()
         ]
@@ -106,10 +127,11 @@ def _students_list_response(request: Request, user, intent: str | None, active_n
 
 @router.get("/students/check-roll-no")
 def check_roll_no(request: Request):
-    """Live duplicate check used by the Add Student form: fires on blur of the
-    roll_no field so the admin finds out *before* filling in the rest of the
-    form and capturing photos, instead of after submit silently overwriting
-    an existing record via upsert_student()."""
+    """Duplicate/lookup check used by the Add Student form (both for the
+    id-first lookup step and the classic pre-submit duplicate warning) and by
+    the Edit form's rename check. Returns full details + embedding_count so
+    the Add form can auto-fill and skip straight to the capture step when a
+    student was already self-registered but has no face encodings yet."""
     user, redirect = require_main_admin(request)
     if redirect:
         return JSONResponse({"exists": False}, status_code=403)
@@ -120,15 +142,27 @@ def check_roll_no(request: Request):
 
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT name, archived_at FROM students WHERE roll_no=?", (roll_no,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM students WHERE roll_no=?", (roll_no,)).fetchone()
+        embedding_count = 0
+        if row is not None:
+            embedding_count = conn.execute(
+                "SELECT COUNT(*) c FROM embeddings WHERE roll_no=?", (roll_no,)
+            ).fetchone()["c"]
     finally:
         conn.close()
 
     if row is None:
         return {"exists": False}
-    return {"exists": True, "name": row["name"], "archived": row["archived_at"] is not None}
+    return {
+        "exists": True,
+        "name": row["name"],
+        "archived": row["archived_at"] is not None,
+        "batch": row["batch"] or "",
+        "year": row["year"],
+        "section": row["section"] or "",
+        "embedding_count": embedding_count,
+        "has_embeddings": embedding_count > 0,
+    }
 
 
 @router.get("/students")
@@ -190,6 +224,15 @@ async def student_add_submit(request: Request):
 
     conn = get_connection()
     try:
+        existing_embeddings = conn.execute(
+            "SELECT COUNT(*) c FROM embeddings WHERE roll_no=?", (roll_no,)
+        ).fetchone()["c"]
+        if existing_embeddings > 0:
+            return RedirectResponse(
+                f"/students/add?error={roll_no} already has face encodings on file — "
+                "use Edit to recapture instead.",
+                status_code=302,
+            )
         upsert_student(conn, roll_no, name, year, "")
         conn.execute(
             "UPDATE students SET batch=?, section=? WHERE roll_no=?",
@@ -246,25 +289,45 @@ async def student_edit_submit(request: Request, roll_no: str):
     year = int(form.get("year") or 1)
     section = form.get("section", "").strip() or None
 
+    try:
+        new_roll_no = validate_roll_no(form.get("roll_no", roll_no))
+    except ValueError as e:
+        return RedirectResponse(f"/students/{roll_no}/edit?error={e}", status_code=302)
+
     photo_urls = _collect_photo_data_urls(form)
 
     conn = get_connection()
     try:
+        if new_roll_no != roll_no:
+            collision = conn.execute(
+                "SELECT roll_no FROM students WHERE roll_no=?", (new_roll_no,)
+            ).fetchone()
+            if collision:
+                return RedirectResponse(
+                    f"/students/{roll_no}/edit?error=ID {new_roll_no} is already used by "
+                    "another student.",
+                    status_code=302,
+                )
+            _rename_roll_no(conn, roll_no, new_roll_no)
+
         conn.execute(
             "UPDATE students SET name=?, batch=?, year=?, section=? WHERE roll_no=?",
-            (name, batch, year, section, roll_no),
+            (name, batch, year, section, new_roll_no),
         )
         saved = 0
         if photo_urls:
-            saved = _save_embeddings(conn, roll_no, photo_urls)
+            saved = _save_embeddings(conn, new_roll_no, photo_urls)
         conn.commit()
     finally:
         conn.close()
 
-    if photo_urls:
+    if photo_urls or new_roll_no != roll_no:
         state.get_recognizer().reload_embeddings()
 
-    msg = f"Updated {roll_no}." + (f" Added {saved} new face photos." if photo_urls else "")
+    msg = f"Updated {new_roll_no}."
+    if new_roll_no != roll_no:
+        msg = f"Renamed {roll_no} to {new_roll_no}."
+    msg += f" Added {saved} new face photos." if photo_urls else ""
     return RedirectResponse(f"/students?success={msg}", status_code=302)
 
 

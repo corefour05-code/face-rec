@@ -18,6 +18,7 @@ from app.routers import capture as capture_router
 from app.routers import faculty as faculty_router
 from app.routers import labs as labs_router
 from app.routers import periods as periods_router
+from app.routers import register as register_router
 from app.routers import report as report_router
 from app.routers import scanner as scanner_router
 from app.routers import students as students_router
@@ -46,5 +47,6 @@ app.include_router(periods_router.router)
 app.include_router(users_router.router)
 app.include_router(scanner_router.router)
 app.include_router(report_router.router)
+app.include_router(register_router.router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
