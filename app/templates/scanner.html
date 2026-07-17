@@ -172,7 +172,7 @@
           <table id="logs-table">
             <thead>
               <tr>
-                <th>S.No</th><th>Name</th><th>Department</th><th>Section</th><th>Batch</th>
+                <th>S.No</th><th>Name</th><th>Section</th><th>Batch</th>
                 <th>In Time</th><th>Period In</th><th>IN Date</th>
                 <th>Out Time</th><th>Period Out</th><th>OUT Date</th>
               </tr>
@@ -308,13 +308,13 @@ async function refreshLogs() {
     document.getElementById('today-count-badge').textContent = `${data.count || 0} today`;
     const tbody = document.querySelector('#logs-table tbody');
     if (!data.rows.length) {
-      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No records for today yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No records for today yet.</td></tr>';
       return;
     }
     tbody.innerHTML = data.rows.map((r, i) => `
       <tr>
         <td>${i + 1}</td><td style="font-weight:600; color:var(--primary-blue);">${r.name}</td>
-        <td>${r.department || '-'}</td><td>${r.section || '-'}</td><td>${r.batch || '-'}</td>
+        <td>${r.section || '-'}</td><td>${r.batch || '-'}</td>
         <td class="in-time">${r.in_time || '-'}</td><td>${r.period_in || '-'}</td><td>${r.in_date || '-'}</td>
         <td class="out-time">${r.out_time || '-'}</td><td>${r.period_out || '-'}</td><td>${r.out_date || '-'}</td>
       </tr>
