@@ -196,9 +196,20 @@ def scanner_logs(request: Request):
             "LEFT JOIN periods pin ON pin.id = fa.in_period_id "
             "LEFT JOIN periods pout ON pout.id = fa.out_period_id "
             "WHERE fa.lab_id=? AND fa.session_date=? "
-            "ORDER BY in_time DESC LIMIT 20",
+            "ORDER BY in_time DESC",
             (lab_id, today, lab_id, today),
         ).fetchall()
+
+        # Distinct headcount for today: unique students + unique faculty who
+        # scanned in at least once, regardless of how many IN/OUT toggles
+        # they triggered (re-entering the lab later doesn't inflate the count).
+        count_row = conn.execute(
+            "SELECT "
+            "(SELECT COUNT(DISTINCT roll_no) FROM attendance WHERE lab_id=? AND session_date=?) + "
+            "(SELECT COUNT(DISTINCT faculty_id) FROM faculty_attendance WHERE lab_id=? AND session_date=?) "
+            "AS total",
+            (lab_id, today, lab_id, today),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -209,7 +220,7 @@ def scanner_logs(request: Request):
         row["out_time"] = format_datetime_time_12h(row["out_time"])
         formatted.append(row)
 
-    return {"rows": formatted}
+    return {"rows": formatted, "count": count_row["total"] if count_row else 0}
 
 
 @router.post("/api/scanner/clear")

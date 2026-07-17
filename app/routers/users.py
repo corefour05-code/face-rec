@@ -70,6 +70,44 @@ def user_add(
     return RedirectResponse("/users?success=User added", status_code=302)
 
 
+@router.post("/users/{user_id}/edit")
+def user_edit(
+    request: Request,
+    user_id: int,
+    username: str = Form(...),
+    password: str = Form(""),
+    role: str = Form(...),
+    lab_id: str = Form(""),
+):
+    user, redirect = require_main_admin(request)
+    if redirect:
+        return redirect
+
+    conn = get_connection()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM users WHERE username=? AND id!=?", (username, user_id)
+        ).fetchone()
+        if existing:
+            return RedirectResponse(f"/users?error=Username '{username}' already exists", status_code=302)
+
+        if password:
+            conn.execute(
+                "UPDATE users SET username=?, password_hash=?, role=?, lab_id=? WHERE id=?",
+                (username.strip(), hash_password(password), role, int(lab_id) if lab_id else None, user_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET username=?, role=?, lab_id=? WHERE id=?",
+                (username.strip(), role, int(lab_id) if lab_id else None, user_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse("/users?success=User updated", status_code=302)
+
+
 @router.post("/users/{user_id}/delete")
 def user_delete(request: Request, user_id: int):
     user, redirect = require_main_admin(request)

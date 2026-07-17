@@ -101,6 +101,7 @@
 
   .logs-card { background: var(--white); border-radius: var(--border-radius); box-shadow: var(--box-shadow); padding: 1.5rem; }
   .logs-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; font-weight: 600; }
+  .today-count-badge { margin-left: auto; background: var(--primary-blue); color: #fff; font-size: 0.85rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 999px; }
   .live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .logs-scroll { overflow-x: auto; }
@@ -163,7 +164,10 @@
 
     <div class="scanner-right">
       <div class="logs-card">
-        <div class="logs-header"><span class="live-dot"></span><span>Recent detections (Last 20 entries)</span></div>
+        <div class="logs-header">
+          <span class="live-dot"></span><span>Today's detections</span>
+          <span class="today-count-badge" id="today-count-badge">0 today</span>
+        </div>
         <div class="logs-scroll">
           <table id="logs-table">
             <thead>
@@ -301,6 +305,7 @@ async function refreshLogs() {
   try {
     const res = await fetch('/api/scanner/logs');
     const data = await res.json();
+    document.getElementById('today-count-badge').textContent = `${data.count || 0} today`;
     const tbody = document.querySelector('#logs-table tbody');
     if (!data.rows.length) {
       tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No records for today yet.</td></tr>';
