@@ -86,6 +86,11 @@
 
         {% if is_main_admin %}
         <div class="nav-group">
+          <div class="nav-group-label">Analytics</div>
+          <a class="nav-link {{ 'active' if active_nav == 'analytics' else '' }}" href="/analytics"><i class="ph ph-chart-pie"></i><span>Analytics</span></a>
+        </div>
+
+        <div class="nav-group">
           <div class="nav-group-label">Student Controls</div>
           <a class="nav-link {{ 'active' if active_nav == 'students' else '' }}" href="/students"><i class="ph ph-users"></i><span>Students Info</span></a>
           <a class="nav-link {{ 'active' if active_nav == 'student_update' else '' }}" href="/students/update"><i class="ph ph-note-pencil"></i><span>Update Student</span></a>

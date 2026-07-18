@@ -13,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from config import SECRET_KEY
 
 from app import state
+from app.routers import analytics as analytics_router
 from app.routers import auth as auth_router
 from app.routers import batch as batch_router
 from app.routers import capture as capture_router
@@ -57,6 +58,7 @@ async def start_shutdown_time_scheduler() -> None:
     app.state.shutdown_scheduler_task = asyncio.create_task(_loop())
 
 
+app.include_router(analytics_router.router)
 app.include_router(auth_router.router)
 app.include_router(batch_router.router)
 app.include_router(capture_router.router)

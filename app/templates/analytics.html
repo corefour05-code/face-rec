@@ -1,0 +1,174 @@
+{% extends "base_admin.html" %}
+{% block title %}Analytics{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
+  <div>
+    <h1 style="margin-bottom:0.25rem;">Analytics</h1>
+    <p style="color: var(--text-muted); margin:0;">
+      Scheduled lab classes vs individual/project attendance, detected from actual scan data.
+    </p>
+  </div>
+</div>
+
+<div class="card" style="background:#F8FAFC; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
+  <form method="get" action="/analytics" style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+    <label style="margin:0;">From Date
+      <input type="date" name="from_date" class="form-control" value="{{ from_date }}" />
+    </label>
+    <label style="margin:0;">To Date
+      <input type="date" name="to_date" class="form-control" value="{{ to_date }}" />
+    </label>
+    <label style="margin:0;">Laboratory
+      <select name="lab_id" class="form-control">
+        <option value="">All Laboratories</option>
+        {% for lab in labs %}
+        <option value="{{ lab.id }}" {{ 'selected' if lab.id == selected_lab_id else '' }}>{{ lab.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="margin:0;">Class Threshold
+      <input type="number" name="threshold" min="1" class="form-control" style="width:100px;" value="{{ threshold }}" />
+    </label>
+    <button type="submit" class="btn btn-primary">APPLY</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div style="display:flex; flex-wrap:wrap; gap:1.75rem;">
+    <div>
+      <strong style="font-size:1.4rem; color:var(--primary-blue);">{{ total_class }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Class Attendance</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ total_individual }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Individual / Project</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ detected_classes | length }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Detected Classes</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ faculty_count }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Faculty Attendance</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <h3 style="margin-top:0;">Class vs Individual / Project</h3>
+    <canvas id="split-chart" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Attendance by Period</h3>
+    <canvas id="period-chart" height="220"></canvas>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <h3 style="margin-top:0;">Attendance by Laboratory</h3>
+  <canvas id="lab-chart" height="120"></canvas>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden; margin-bottom:1.5rem;">
+  <h3 style="margin:1.5rem 1.5rem 0;">Detected Lab Classes</h3>
+  <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
+    Groups that cleared the {{ threshold }}-student threshold in a single period + lab.
+  </p>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Date</th><th>Period</th><th>Laboratory</th><th>Year</th><th>Section</th><th>Headcount</th></tr></thead>
+      <tbody>
+        {% for c in detected_classes %}
+        <tr>
+          <td>{{ c.date }}</td>
+          <td>{{ c.period }}</td>
+          <td><span class="badge badge-{{ lab_badge_color(c.lab_id) }}">{{ c.lab }}</span></td>
+          <td>{{ c.year }}</td>
+          <td>{{ c.section }}</td>
+          <td><strong>{{ c.count }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No classes detected for this range at the current threshold.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin:1.5rem 1.5rem 0;">
+    <h3 style="margin:0;">Individual / Project Attendance</h3>
+    <input type="text" id="individual-search" class="form-control" style="width:240px;" placeholder="Search name/ID" />
+  </div>
+  <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
+    Students who scanned in outside any group that cleared the threshold.
+  </p>
+  <div style="overflow-x:auto;">
+    <table id="individual-table">
+      <thead><tr><th>Date</th><th>Period</th><th>Laboratory</th><th>ID</th><th>Name</th><th>Year</th><th>Section</th></tr></thead>
+      <tbody>
+        {% for r in individual_rows %}
+        <tr>
+          <td>{{ r.date }}</td>
+          <td>{{ r.period }}</td>
+          <td><span class="badge badge-{{ lab_badge_color(r.lab_id) }}">{{ r.lab }}</span></td>
+          <td>{{ r.roll_no }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.year }}</td>
+          <td>{{ r.section }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No individual/project attendance for this range.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.getElementById('individual-search').addEventListener('keyup', function () {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#individual-table tbody tr').forEach((row) => {
+    if (!row.cells || row.cells.length < 7) return;
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+const totalClass = {{ total_class }};
+const totalIndividual = {{ total_individual }};
+new Chart(document.getElementById('split-chart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Class', 'Individual / Project'],
+    datasets: [{ data: [totalClass, totalIndividual], backgroundColor: ['#1565C0', '#8D6E00'] }],
+  },
+  options: { plugins: { legend: { position: 'bottom' } } },
+});
+
+new Chart(document.getElementById('period-chart'), {
+  type: 'bar',
+  data: {
+    labels: {{ period_labels | tojson }},
+    datasets: [{ label: 'Attendance', data: {{ period_values | tojson }}, backgroundColor: '#077c3c' }],
+  },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+});
+
+new Chart(document.getElementById('lab-chart'), {
+  type: 'bar',
+  data: {
+    labels: {{ lab_labels | tojson }},
+    datasets: [{ label: 'Attendance', data: {{ lab_values | tojson }}, backgroundColor: '#1565C0' }],
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+  },
+});
+</script>
+{% endblock %}

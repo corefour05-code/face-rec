@@ -42,6 +42,12 @@ MATCH_MARGIN = 0.05                    # best match must beat the best *other* i
                                         # against false accepts as the enrolled pool grows
 MIN_FACE_SIZE_PX = 60                  # reject tiny/far-away detections
 
+# --- Analytics ---
+# Minimum distinct students from the same (year, section) checked into the
+# same period+lab to count that group as a scheduled lab class rather than
+# individual/project attendance. Overridable per-request on the Analytics page.
+LAB_CLASS_MIN_STUDENTS = 35
+
 # --- Enrollment ---
 ENROLLMENT_SHOTS_PER_STUDENT = 5
 ENROLLMENT_ANGLE_LABELS = ["center", "left", "right", "up", "down"]
