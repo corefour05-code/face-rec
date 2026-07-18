@@ -59,7 +59,7 @@
 
 <div class="grid-2" style="margin-bottom:1.5rem;">
   <div class="card">
-    <h3 style="margin-top:0;">Class vs Individual / Project</h3>
+    <h3 style="margin-top:0;">Attendance by Class</h3>
     <canvas id="split-chart" height="220"></canvas>
   </div>
   <div class="card">
@@ -138,13 +138,18 @@ document.getElementById('individual-search').addEventListener('keyup', function 
   });
 });
 
-const totalClass = {{ total_class }};
-const totalIndividual = {{ total_individual }};
+const pieLabels = {{ pie_labels | tojson }};
+const pieValues = {{ pie_values | tojson }};
+const classPalette = ['#1565C0', '#00695C', '#6A1B9A', '#283593', '#C62828', '#2E7D32', '#EF6C00', '#00838F'];
+// Every slice is a distinct detected class except the last, which is always
+// "Individual / Project" — keep that one a fixed neutral color so it reads
+// as the "everyone else" bucket rather than just another class.
+const pieColors = pieLabels.map((_, i) => i === pieLabels.length - 1 ? '#8D6E00' : classPalette[i % classPalette.length]);
 new Chart(document.getElementById('split-chart'), {
   type: 'doughnut',
   data: {
-    labels: ['Class', 'Individual / Project'],
-    datasets: [{ data: [totalClass, totalIndividual], backgroundColor: ['#1565C0', '#8D6E00'] }],
+    labels: pieLabels,
+    datasets: [{ data: pieValues, backgroundColor: pieColors }],
   },
   options: { plugins: { legend: { position: 'bottom' } } },
 });

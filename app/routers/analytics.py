@@ -170,6 +170,16 @@ def analytics_page(request: Request):
     lab_labels = [l["name"] for l in labs]
     lab_values = [result["lab_totals"].get(name, 0) for name in lab_labels]
 
+    # Pie breakdown: sum each detected class's headcount across every
+    # date/period/lab it appeared in within the filtered range, so "Year 2 -
+    # Section B" shows as one slice even if it recurred on several days.
+    class_totals: dict = defaultdict(int)
+    for c in result["detected_classes"]:
+        class_totals[f"Year {c['year']} - {c['section']}"] += c["count"]
+    class_breakdown = sorted(class_totals.items(), key=lambda kv: kv[1], reverse=True)
+    pie_labels = [label for label, _ in class_breakdown] + ["Individual / Project"]
+    pie_values = [count for _, count in class_breakdown] + [result["total_individual"]]
+
     context = {
         **admin_template_context(user),
         "active_nav": "analytics",
@@ -183,6 +193,8 @@ def analytics_page(request: Request):
         "period_values": period_values,
         "lab_labels": lab_labels,
         "lab_values": lab_values,
+        "pie_labels": pie_labels,
+        "pie_values": pie_values,
         **result,
     }
     return templates.TemplateResponse(request, "analytics.html", context)
