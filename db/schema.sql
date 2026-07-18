@@ -89,3 +89,44 @@ CREATE TABLE IF NOT EXISTS faculty_attendance (
 
 CREATE INDEX IF NOT EXISTS idx_faculty_attendance_dedup ON faculty_attendance(faculty_id, session_date, lab_id);
 CREATE INDEX IF NOT EXISTS idx_faculty_attendance_session_date ON faculty_attendance(session_date);
+
+-- Snapshot of each Batch Processing "Move to Next Year" run, so it can be
+-- undone: prior year per student, and (for graduated students) a backup of
+-- the embeddings that were deleted when they were archived into Old Students.
+CREATE TABLE IF NOT EXISTS batch_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    promoted_count  INTEGER NOT NULL,
+    graduated_count INTEGER NOT NULL,
+    undone_at       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS batch_run_students (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_run_id INTEGER NOT NULL REFERENCES batch_runs(id) ON DELETE CASCADE,
+    roll_no      TEXT NOT NULL,
+    prev_year    INTEGER NOT NULL,
+    was_archived INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_run_students_run ON batch_run_students(batch_run_id);
+
+CREATE TABLE IF NOT EXISTS batch_run_embeddings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_run_id INTEGER NOT NULL REFERENCES batch_runs(id) ON DELETE CASCADE,
+    roll_no      TEXT NOT NULL,
+    embedding    BLOB NOT NULL,
+    angle_label  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_run_embeddings_run ON batch_run_embeddings(batch_run_id);
+
+-- Global "Manage Shutdown Time" schedule: at each configured clock time, every
+-- lab's currently-IN students/faculty are auto-marked OUT (like Clear Lab, but
+-- scheduled and applied across all labs at once instead of per-lab/manual).
+CREATE TABLE IF NOT EXISTS shutdown_times (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    time                 TEXT NOT NULL UNIQUE,  -- "HH:MM", 24h
+    last_triggered_date  TEXT,                   -- 'YYYY-MM-DD' of the last day this fired, NULL until first fire
+    created_at           TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);

@@ -11,8 +11,7 @@
 
 {% if intent %}
 <div class="flash-message" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; margin-bottom:1rem;">
-  {% if intent == 'update' %}Click the <i class="ph ph-note-pencil"></i> icon next to a student below to update their record.
-  {% elif intent == 'delete' %}Click the <i class="ph ph-trash"></i> icon next to a student below to delete their record.{% endif %}
+  {% if intent == 'delete' %}Click the <i class="ph ph-trash"></i> icon next to a student below to delete their record.{% endif %}
 </div>
 {% endif %}
 
@@ -90,7 +89,7 @@ document.getElementById('search-input').addEventListener('keyup', function () {
 });
 
 async function deleteStudent(rollNo) {
-  if (!confirm(`Archive student ${rollNo}? Their face data is removed (they won't be matched by the scanner), but attendance history is kept. Re-adding the same ID later restores them.`)) return;
+  if (!confirm(`Permanently delete student ${rollNo}? This removes their record, face data, and attendance history from the database. This cannot be undone.`)) return;
   const res = await fetch(`/students/${rollNo}`, { method: 'DELETE' });
   if (res.ok) {
     location.reload();

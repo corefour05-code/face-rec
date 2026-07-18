@@ -1,10 +1,32 @@
 {% extends "base_admin.html" %}
 {% block title %}Old Students{% endblock %}
+{% block extra_head %}
+<style>
+  .os-modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(15,20,25,0.6);
+    align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .os-modal-overlay.open { display: flex; }
+  .os-modal-panel {
+    background: var(--white);
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+  }
+  .os-modal-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+  .os-modal-actions .btn { flex: 1; }
+</style>
+{% endblock %}
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem;">
   <div>
     <h1 style="margin-bottom:0.25rem;">Old Students</h1>
-    <p style="color: var(--text-muted); margin:0;">Graduated or removed students. Attendance history is kept, but they're no longer matched by the scanner.</p>
+    <p style="color: var(--text-muted); margin:0;">Graduated students moved here by Batch Processing. Attendance history is kept, but they're no longer matched by the scanner.</p>
   </div>
 </div>
 
@@ -18,10 +40,23 @@
   </form>
 </div>
 
+<div class="card" style="margin-bottom:1.5rem; padding:1rem 1.5rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+  <button type="button" class="btn btn-grey" id="delete-selected-btn" disabled>
+    <i class="ph ph-trash"></i> Delete Selected (<span id="selected-count">0</span>)
+  </button>
+  <button type="button" class="btn btn-danger" id="delete-all-btn" {{ 'disabled' if not students else '' }}>
+    <i class="ph ph-trash"></i> Delete ALL Old Students
+  </button>
+  <span style="color: var(--text-muted); font-size:0.85rem;">
+    Permanent — removes the record, face data, and attendance history from the database. Cannot be undone.
+  </span>
+</div>
+
 <div class="card" style="padding:0; overflow:hidden;">
   <table id="old-students-table">
     <thead>
       <tr>
+        <th><input type="checkbox" id="select-all-checkbox" {{ 'disabled' if not students else '' }} /></th>
         <th>Registration ID</th><th>Name</th><th>Department</th><th>Batch</th>
         <th>Year</th><th>Section</th><th>Archived On</th>
       </tr>
@@ -29,6 +64,7 @@
     <tbody>
       {% for s in students %}
       <tr>
+        <td><input type="checkbox" class="row-checkbox" value="{{ s.roll_no }}" /></td>
         <td>{{ s.roll_no }}</td>
         <td>{{ s.name }}</td>
         <td>{{ s.department }}</td>
@@ -38,18 +74,126 @@
         <td>{{ s.archived_at or '-' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No old students yet.</td></tr>
+      <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:2rem;">No old students yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<div class="os-modal-overlay" id="delete-modal">
+  <div class="os-modal-panel">
+    <h3 id="delete-modal-title">Delete Old Students?</h3>
+    <p id="delete-modal-text" style="color: var(--text-muted);"></p>
+    <input type="password" id="delete-admin-password" class="form-control" placeholder="Your admin password" autocomplete="current-password" />
+    <div class="status err" id="delete-modal-error" style="display:none;"></div>
+    <div class="os-modal-actions">
+      <button class="btn btn-danger" id="delete-confirm-btn">Confirm Delete</button>
+      <button class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <script>
 document.getElementById('search-input').addEventListener('keyup', function () {
   const q = this.value.toLowerCase();
   document.querySelectorAll('#old-students-table tbody tr').forEach((row) => {
+    if (!row.querySelector('.row-checkbox')) return; // "no old students" placeholder row
     row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
+  updateSelectedCount();
+});
+
+const selectAllCheckbox = document.getElementById('select-all-checkbox');
+const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+const selectedCountEl = document.getElementById('selected-count');
+
+function visibleRowCheckboxes() {
+  return Array.from(document.querySelectorAll('#old-students-table tbody .row-checkbox'))
+    .filter((cb) => cb.closest('tr').style.display !== 'none');
+}
+
+function updateSelectedCount() {
+  const checked = document.querySelectorAll('#old-students-table tbody .row-checkbox:checked').length;
+  selectedCountEl.textContent = checked;
+  deleteSelectedBtn.disabled = checked === 0;
+  const visible = visibleRowCheckboxes();
+  selectAllCheckbox.checked = visible.length > 0 && visible.every((cb) => cb.checked);
+}
+
+selectAllCheckbox?.addEventListener('change', () => {
+  visibleRowCheckboxes().forEach((cb) => { cb.checked = selectAllCheckbox.checked; });
+  updateSelectedCount();
+});
+
+document.getElementById('old-students-table').addEventListener('change', (e) => {
+  if (e.target.classList.contains('row-checkbox')) updateSelectedCount();
+});
+
+const deleteModal = document.getElementById('delete-modal');
+const deleteModalTitle = document.getElementById('delete-modal-title');
+const deleteModalText = document.getElementById('delete-modal-text');
+const deleteAdminPassword = document.getElementById('delete-admin-password');
+const deleteModalError = document.getElementById('delete-modal-error');
+let pendingMode = null;
+
+function openDeleteModal(mode) {
+  pendingMode = mode;
+  deleteAdminPassword.value = '';
+  deleteModalError.style.display = 'none';
+  if (mode === 'all') {
+    deleteModalTitle.textContent = 'Delete ALL Old Students?';
+    deleteModalText.textContent =
+      'This permanently deletes every old student — records, face data, and attendance history. This cannot be undone.';
+  } else {
+    const n = document.querySelectorAll('#old-students-table tbody .row-checkbox:checked').length;
+    deleteModalTitle.textContent = `Delete ${n} Selected Student(s)?`;
+    deleteModalText.textContent =
+      'This permanently deletes the selected students — records, face data, and attendance history. This cannot be undone.';
+  }
+  deleteModal.classList.add('open');
+  deleteAdminPassword.focus();
+}
+
+function closeDeleteModal() {
+  deleteModal.classList.remove('open');
+  pendingMode = null;
+}
+
+document.getElementById('delete-selected-btn').addEventListener('click', () => openDeleteModal('selected'));
+document.getElementById('delete-all-btn').addEventListener('click', () => openDeleteModal('all'));
+document.getElementById('delete-cancel-btn').addEventListener('click', closeDeleteModal);
+
+document.getElementById('delete-confirm-btn').addEventListener('click', async () => {
+  const password = deleteAdminPassword.value;
+  if (!password) {
+    deleteModalError.textContent = 'Enter your admin password to confirm.';
+    deleteModalError.style.display = 'block';
+    return;
+  }
+
+  const payload = { mode: pendingMode, admin_password: password };
+  if (pendingMode === 'selected') {
+    payload.roll_nos = Array.from(document.querySelectorAll('#old-students-table tbody .row-checkbox:checked'))
+      .map((cb) => cb.value);
+  }
+
+  try {
+    const res = await fetch('/old-students/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      deleteModalError.textContent = data.error || 'Delete failed.';
+      deleteModalError.style.display = 'block';
+      return;
+    }
+    window.location.href = `/old-students?success=${encodeURIComponent('Permanently deleted ' + data.deleted + ' old student(s).')}`;
+  } catch (e) {
+    deleteModalError.textContent = 'Request failed — check your connection and try again.';
+    deleteModalError.style.display = 'block';
+  }
 });
 </script>
 {% endblock %}

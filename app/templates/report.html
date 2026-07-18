@@ -38,6 +38,13 @@
     <label style="margin:0;">Year
       <input type="text" name="year" id="filter-year" class="form-control" value="{{ year or '' }}" />
     </label>
+    <label style="margin:0;">Type
+      <select name="kind" class="form-control">
+        <option value="all" {{ 'selected' if kind == 'all' else '' }}>All</option>
+        <option value="student" {{ 'selected' if kind == 'student' else '' }}>Students</option>
+        <option value="faculty" {{ 'selected' if kind == 'faculty' else '' }}>Faculty</option>
+      </select>
+    </label>
     <label style="margin:0; flex-grow:1;">Search Name/ID
       <input type="text" name="q" id="filter-q" class="form-control" value="{{ q or '' }}" />
     </label>
@@ -54,6 +61,10 @@
     <div>
       <strong style="font-size:1.4rem;">{{ unique_students }}</strong>
       <div style="color:var(--text-muted); font-size:0.8rem;">Unique Students</div>
+    </div>
+    <div>
+      <strong style="font-size:1.4rem;">{{ unique_faculty }}</strong>
+      <div style="color:var(--text-muted); font-size:0.8rem;">Unique Faculty</div>
     </div>
     {% if year_counts %}
     <div style="flex-grow:1; min-width:180px;">
@@ -79,20 +90,21 @@
     <table id="report-table" style="white-space:nowrap;">
       <thead>
         <tr>
-          <th>S.No</th><th>ID</th><th>Name</th><th>Section</th><th>Batch</th><th>Year</th>
+          <th>S.No</th><th>Type</th><th>ID</th><th>Name</th><th>Section</th><th>Batch</th><th>Year</th>
           <th>Laboratory</th><th>In Time</th><th>Period In</th><th>In Date</th>
-          <th>Out Time</th><th>Period Out</th><th>Out Date</th><th>Action</th>
+          <th>Out Time</th><th>Period Out</th><th>Out Date</th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
         <tr>
           <td>{{ loop.index }}</td>
-          <td>{{ r.roll_no }}</td>
+          <td><span class="badge badge-{{ 'blue' if r.kind == 'student' else 'purple' }}">{{ r.kind | capitalize }}</span></td>
+          <td>{{ r.person_id }}</td>
           <td>{{ r.name }}</td>
           <td>{{ r.section or '-' }}</td>
           <td>{{ r.batch or '-' }}</td>
-          <td>{{ r.year }}</td>
+          <td>{{ r.year or '-' }}</td>
           <td><span class="badge badge-{{ lab_badge_color(r.lab_id) }}">{{ r.lab_name }}</span></td>
           <td style="color: var(--success); font-weight:600;">{{ r.in_time | dt_time12 }}</td>
           <td>{{ r.period_in or '-' }}</td>
@@ -100,7 +112,6 @@
           <td style="color: var(--danger); font-weight:600;">{{ r.out_time | dt_time12 }}</td>
           <td>{{ r.period_out or '-' }}</td>
           <td>{{ r.out_date or '-' }}</td>
-          <td><button class="btn btn-danger" onclick="deleteStudentRecord('{{ r.roll_no }}')"><i class="ph ph-trash"></i></button></td>
         </tr>
         {% else %}
         <tr><td colspan="14" style="text-align:center; color:var(--text-muted); padding:2.5rem;">
@@ -121,8 +132,8 @@ function liveFilter() {
   document.querySelectorAll('#report-table tbody tr').forEach((row) => {
     const cells = row.querySelectorAll('td');
     if (cells.length < 14) return;
-    const rowSection = cells[3].textContent.toLowerCase();
-    const rowYear = cells[5].textContent.toLowerCase();
+    const rowSection = cells[4].textContent.toLowerCase();
+    const rowYear = cells[6].textContent.toLowerCase();
     const rowText = row.textContent.toLowerCase();
     const matches = (!section || rowSection.includes(section))
       && (!year || rowYear.includes(year))
@@ -133,12 +144,5 @@ function liveFilter() {
 ['filter-section', 'filter-year', 'filter-q'].forEach((id) => {
   document.getElementById(id).addEventListener('keyup', liveFilter);
 });
-
-async function deleteStudentRecord(rollNo) {
-  if (!confirm(`Archive student ${rollNo}? Their face data is removed (they won't be matched by the scanner), but their attendance history shown here is kept.`)) return;
-  const res = await fetch(`/students/${rollNo}`, { method: 'DELETE' });
-  if (res.ok) location.reload();
-  else alert('Failed to delete.');
-}
 </script>
 {% endblock %}

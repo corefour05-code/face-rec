@@ -25,8 +25,23 @@
     scanner's recognition pool, but their attendance history is kept.
   </p>
   <form method="post" action="/batch-processing/promote"
-        onsubmit="return confirm('Promote all students to their next year and move {{ counts.get(4, 0) }} Year 4 student(s) to Old Students?\n\nThis cannot be undone automatically.');">
+        onsubmit="return confirm('Promote all students to their next year and move {{ counts.get(4, 0) }} Year 4 student(s) to Old Students?');">
     <button type="submit" class="btn btn-danger">Move to Next Year</button>
   </form>
 </div>
+
+{% if last_run %}
+<div class="card" style="margin-top:1.5rem; border:1px solid #FBBF24; background:#FFFBEB;">
+  <h3 style="margin-top:0;">Undo Available</h3>
+  <p style="color: var(--text-muted);">
+    Last batch run ({{ last_run.created_at }}) promoted {{ last_run.promoted_count }} student(s)
+    and moved {{ last_run.graduated_count }} to Old Students. This can be reversed once — running
+    "Move to Next Year" again replaces this undo point.
+  </p>
+  <form method="post" action="/batch-processing/undo"
+        onsubmit="return confirm('Undo the last batch run? This rolls back promoted years and restores graduated students (with their face data) from Old Students.');">
+    <button type="submit" class="btn btn-grey">Undo Last Batch Run</button>
+  </form>
+</div>
+{% endif %}
 {% endblock %}

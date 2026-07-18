@@ -174,11 +174,21 @@ def students_list(request: Request):
 
 
 @router.get("/students/update")
-def students_list_update(request: Request):
+def student_update_form(request: Request):
+    """Same layout as Add Student, but the ID field looks up an existing
+    student (via check-roll-no) and loads their record for editing, rather
+    than starting a blank enrollment."""
     user, redirect = require_main_admin(request)
     if redirect:
         return redirect
-    return _students_list_response(request, user, "update", "student_update", "/students/update")
+    context = {
+        **admin_template_context(user),
+        "active_nav": "student_update",
+        "mode": "update",
+        "student": None,
+        "embedding_count": 0,
+    }
+    return templates.TemplateResponse(request, "student_form.html", context)
 
 
 @router.get("/students/delete")
@@ -333,20 +343,17 @@ async def student_edit_submit(request: Request, roll_no: str):
 
 @router.delete("/students/{roll_no}")
 def student_delete(request: Request, roll_no: str):
-    """Soft-delete: archive the student and drop their embeddings (so the
-    scanner stops matching them), but keep the row + attendance history intact
-    so past reports keep working. Re-enrolling the same roll_no restores them."""
+    """Hard delete: permanently removes the student row, their embeddings, and
+    their attendance history (all via ON DELETE CASCADE). Unlike batch
+    graduation (which archives into Old Students), there is no undo for this —
+    the roll_no is fully free to re-add as a brand-new student afterward."""
     user, redirect = require_main_admin(request)
     if redirect:
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=403)
 
     conn = get_connection()
     try:
-        conn.execute(
-            "UPDATE students SET archived_at=datetime('now','localtime') WHERE roll_no=?",
-            (roll_no,),
-        )
-        conn.execute("DELETE FROM embeddings WHERE roll_no=?", (roll_no,))
+        conn.execute("DELETE FROM students WHERE roll_no=?", (roll_no,))
         conn.commit()
     finally:
         conn.close()
