@@ -11,7 +11,7 @@ individual/project attendance. Faculty are summarized separately since
 section/year don't apply to them."""
 
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def _build_filters(request: Request):
 
 def _classify(conn, from_date, to_date, lab_id, threshold):
     sql = (
-        "SELECT a.roll_no, a.session_date, a.in_period_id, a.lab_id, "
+        "SELECT a.roll_no, a.session_date, a.in_period_id, a.out_period_id, a.lab_id, "
         "s.name AS name, s.year AS year, s.section AS section, "
         "p.period_name AS period_name, l.name AS lab_name "
         "FROM attendance a "
@@ -58,6 +58,14 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
         sql += " AND a.lab_id = ?"
         params.append(lab_id)
     rows = conn.execute(sql, params).fetchall()
+
+    # Chronological period order, so a class detected as entering in one
+    # period and (per a matching bulk out-scan) leaving in a later one can
+    # be credited to every period in between, not just the entry period.
+    period_order_rows = conn.execute("SELECT id, period_name FROM periods ORDER BY start_time").fetchall()
+    period_order = [p["id"] for p in period_order_rows]
+    period_index = {pid: i for i, pid in enumerate(period_order)}
+    period_name_by_id = {p["id"]: p["period_name"] for p in period_order_rows}
 
     # bucket[(date, period_id, lab_id)] -> list of row dicts, deduped by roll_no
     buckets: dict = defaultdict(dict)
@@ -94,9 +102,34 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
                     "count": len(group_rows),
                 })
                 total_class += len(group_rows)
-                period_totals[period_name] += len(group_rows)
                 lab_totals[lab_name] += len(group_rows)
                 classed_roll_nos.update(r["roll_no"] for r in group_rows)
+
+                # Did enough of this same group also clock out together
+                # (out-scan bucket meets the same threshold)? If so, treat
+                # the class as having stayed through every period from
+                # entry to that departure period, not just the entry one.
+                span_names = [period_name]
+                if period_id in period_index:
+                    out_counts = Counter(
+                        r["out_period_id"] for r in group_rows if r["out_period_id"] is not None
+                    )
+                    if out_counts:
+                        out_id, out_count = out_counts.most_common(1)[0]
+                        if (
+                            out_count >= threshold
+                            and out_id in period_index
+                            and period_index[out_id] >= period_index[period_id]
+                        ):
+                            start_idx = period_index[period_id]
+                            end_idx = period_index[out_id]
+                            span_names = [
+                                period_name_by_id[pid]
+                                for pid in period_order[start_idx : end_idx + 1]
+                            ]
+
+                for name in span_names:
+                    period_totals[name] += len(group_rows)
 
         for row in students_in_bucket.values():
             if row["roll_no"] in classed_roll_nos:

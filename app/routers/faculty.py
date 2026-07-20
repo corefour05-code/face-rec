@@ -211,6 +211,9 @@ async def faculty_add_submit(request: Request):
     finally:
         conn.close()
 
+    if saved:
+        state.get_recognizer().reload_embeddings()
+
     return RedirectResponse(
         f"/faculty?success=Added {faculty_id} with {saved} face photos.", status_code=302
     )
