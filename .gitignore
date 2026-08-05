@@ -16,3 +16,8 @@ data/enrollment_photos/
 
 # Editor/tooling
 .claude/
+
+# Packaged desktop build (software/) — build artifacts + staged ~150MB
+# model weights, not source. Rebuild locally via software/build.bat.
+software/_build/
+software/dist/

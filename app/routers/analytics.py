@@ -11,8 +11,8 @@ individual/project attendance. Faculty are summarized separately since
 section/year don't apply to them."""
 
 import sys
-from collections import Counter, defaultdict
-from datetime import date
+from collections import defaultdict
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request
 
 from app.deps import admin_template_context, require_main_admin
 from app.templating import templates
-from config import LAB_CLASS_MIN_STUDENTS
+from config import ANALYTICS_SESSION_GAP_MINUTES, LAB_CLASS_MIN_STUDENTS
 from db.connection import get_connection
 
 router = APIRouter()
@@ -42,9 +42,51 @@ def _build_filters(request: Request):
     return from_date, to_date, lab_id, threshold
 
 
+def _parse_dt(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _merge_into_sessions(rows):
+    """Collapse a student's same-day, same-lab attendance rows into sessions.
+
+    Consecutive visits are one continuous sitting (e.g. a short break) when
+    the gap between an OUT and the next IN is within
+    ANALYTICS_SESSION_GAP_MINUTES; anything longer (class ended, then a lone
+    comeback periods later) starts a new, independently-classified session.
+    Rows must already be sorted by (roll_no, lab_id, session_date, in_time).
+    """
+    sessions = []
+    current = None
+    current_key = None
+    for r in rows:
+        key = (r["roll_no"], r["lab_id"], r["session_date"])
+        if current is not None and key == current_key:
+            prev_out = _parse_dt(current["out_time"])
+            next_in = _parse_dt(r["in_time"])
+            gap_ok = (
+                prev_out is not None
+                and next_in is not None
+                and (next_in - prev_out).total_seconds() / 60 <= ANALYTICS_SESSION_GAP_MINUTES
+            )
+            if gap_ok:
+                current["out_time"] = r["out_time"]
+                current["out_period_id"] = r["out_period_id"]
+                continue
+        current = dict(r)
+        current_key = key
+        sessions.append(current)
+    return sessions
+
+
 def _classify(conn, from_date, to_date, lab_id, threshold):
     sql = (
         "SELECT a.roll_no, a.session_date, a.in_period_id, a.out_period_id, a.lab_id, "
+        "a.in_time, a.out_time, "
         "s.name AS name, s.year AS year, s.section AS section, "
         "p.period_name AS period_name, l.name AS lab_name "
         "FROM attendance a "
@@ -57,25 +99,18 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
     if lab_id is not None:
         sql += " AND a.lab_id = ?"
         params.append(lab_id)
+    sql += " ORDER BY a.roll_no, a.lab_id, a.session_date, a.in_time"
     rows = conn.execute(sql, params).fetchall()
+    sessions = _merge_into_sessions(rows)
 
-    # Chronological period order, so a class detected as entering in one
-    # period and (per a matching bulk out-scan) leaving in a later one can
-    # be credited to every period in between, not just the entry period.
-    period_order_rows = conn.execute("SELECT id, period_name FROM periods ORDER BY start_time").fetchall()
-    period_order = [p["id"] for p in period_order_rows]
-    period_index = {pid: i for i, pid in enumerate(period_order)}
-    period_name_by_id = {p["id"]: p["period_name"] for p in period_order_rows}
-
-    # bucket[(date, period_id, lab_id)] -> list of row dicts, deduped by roll_no
+    # bucket[(date, period_id, lab_id)] -> list of session dicts, deduped by roll_no
     buckets: dict = defaultdict(dict)
-    for r in rows:
-        key = (r["session_date"], r["in_period_id"], r["lab_id"])
-        buckets[key][r["roll_no"]] = r
+    for s in sessions:
+        key = (s["session_date"], s["in_period_id"], s["lab_id"])
+        buckets[key][s["roll_no"]] = s
 
     detected_classes = []
     individual_rows = []
-    period_totals: dict = defaultdict(int)
     lab_totals: dict = defaultdict(int)
     total_class = 0
     total_individual = 0
@@ -105,32 +140,6 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
                 lab_totals[lab_name] += len(group_rows)
                 classed_roll_nos.update(r["roll_no"] for r in group_rows)
 
-                # Did enough of this same group also clock out together
-                # (out-scan bucket meets the same threshold)? If so, treat
-                # the class as having stayed through every period from
-                # entry to that departure period, not just the entry one.
-                span_names = [period_name]
-                if period_id in period_index:
-                    out_counts = Counter(
-                        r["out_period_id"] for r in group_rows if r["out_period_id"] is not None
-                    )
-                    if out_counts:
-                        out_id, out_count = out_counts.most_common(1)[0]
-                        if (
-                            out_count >= threshold
-                            and out_id in period_index
-                            and period_index[out_id] >= period_index[period_id]
-                        ):
-                            start_idx = period_index[period_id]
-                            end_idx = period_index[out_id]
-                            span_names = [
-                                period_name_by_id[pid]
-                                for pid in period_order[start_idx : end_idx + 1]
-                            ]
-
-                for name in span_names:
-                    period_totals[name] += len(group_rows)
-
         for row in students_in_bucket.values():
             if row["roll_no"] in classed_roll_nos:
                 continue
@@ -145,7 +154,6 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
                 "section": row["section"] or "Unassigned",
             })
             total_individual += 1
-            period_totals[period_name] += 1
             lab_totals[lab_name] += 1
 
     detected_classes.sort(key=lambda c: (c["date"], c["period"], c["lab"]))
@@ -154,11 +162,56 @@ def _classify(conn, from_date, to_date, lab_id, threshold):
     return {
         "detected_classes": detected_classes,
         "individual_rows": individual_rows,
-        "period_totals": dict(period_totals),
         "lab_totals": dict(lab_totals),
         "total_class": total_class,
         "total_individual": total_individual,
     }
+
+
+def _class_strength(conn, from_date, to_date, lab_id):
+    """Total enrolled strength vs. distinct students present, for each
+    (year, section) that actually had at least one active student present
+    in the filtered date range/lab — groups with zero attendance are
+    omitted rather than listing the entire roster."""
+    strength_rows = conn.execute(
+        "SELECT year, section, COUNT(*) AS total FROM students "
+        "WHERE archived_at IS NULL GROUP BY year, section"
+    ).fetchall()
+    strength: dict = {(r["year"], r["section"] or "Unassigned"): r["total"] for r in strength_rows}
+
+    sql = (
+        "SELECT DISTINCT a.roll_no, a.session_date, s.year AS year, s.section AS section "
+        "FROM attendance a JOIN students s ON s.roll_no = a.roll_no "
+        "WHERE s.archived_at IS NULL AND a.session_date BETWEEN ? AND ?"
+    )
+    params: list = [from_date, to_date]
+    if lab_id is not None:
+        sql += " AND a.lab_id = ?"
+        params.append(lab_id)
+    rows = conn.execute(sql, params).fetchall()
+
+    present: dict = defaultdict(set)
+    for r in rows:
+        key = (r["year"], r["section"] or "Unassigned")
+        present[key].add((r["roll_no"], r["session_date"]))
+
+    # Only groups with at least one present student that day — not the
+    # full roster of every year/section regardless of whether they had
+    # anything scheduled in the filtered range/lab.
+    result = []
+    for (year, section), present_roll_dates in present.items():
+        present_count = len(present_roll_dates)
+        total = strength.get((year, section), 0)
+        percent = round(present_count / total * 100, 1) if total else 0
+        result.append({
+            "year": year,
+            "section": section,
+            "total": total,
+            "present": present_count,
+            "percent": percent,
+        })
+    result.sort(key=lambda r: (r["year"], r["section"]))
+    return result
 
 
 def _faculty_summary(conn, from_date, to_date, lab_id):
@@ -187,19 +240,14 @@ def analytics_page(request: Request):
     conn = get_connection()
     try:
         labs = conn.execute("SELECT * FROM labs ORDER BY name").fetchall()
-        periods = conn.execute("SELECT * FROM periods ORDER BY start_time").fetchall()
         result = _classify(conn, from_date, to_date, lab_id, threshold)
         faculty_count = _faculty_summary(conn, from_date, to_date, lab_id)
+        class_strength = _class_strength(conn, from_date, to_date, lab_id)
     finally:
         conn.close()
 
-    # Zero-fill so the bar charts always show every known period/lab, even
-    # with no attendance, and stay in a stable chronological/alphabetical order.
-    period_labels = [p["period_name"] for p in periods]
-    if "Unscheduled" in result["period_totals"]:
-        period_labels.append("Unscheduled")
-    period_values = [result["period_totals"].get(name, 0) for name in period_labels]
-
+    # Zero-fill so the lab bar chart always shows every known lab, even with
+    # no attendance, and stays in a stable alphabetical order.
     lab_labels = [l["name"] for l in labs]
     lab_values = [result["lab_totals"].get(name, 0) for name in lab_labels]
 
@@ -222,8 +270,7 @@ def analytics_page(request: Request):
         "selected_lab_id": lab_id,
         "threshold": threshold,
         "faculty_count": faculty_count,
-        "period_labels": period_labels,
-        "period_values": period_values,
+        "class_strength": class_strength,
         "lab_labels": lab_labels,
         "lab_values": lab_values,
         "pie_labels": pie_labels,

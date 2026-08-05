@@ -48,6 +48,13 @@ MIN_FACE_SIZE_PX = 60                  # reject tiny/far-away detections
 # individual/project attendance. Overridable per-request on the Analytics page.
 LAB_CLASS_MIN_STUDENTS = 35
 
+# A student's same-day, same-lab attendance rows are merged into one session
+# when the gap between an OUT and the next IN is within this many minutes —
+# treated as a short break (stepping out and back in), not a separate visit.
+# A longer gap (e.g. class ended, then a lone comeback periods later) starts
+# a new, independently-classified session instead.
+ANALYTICS_SESSION_GAP_MINUTES = 15
+
 # --- Enrollment ---
 ENROLLMENT_SHOTS_PER_STUDENT = 5
 ENROLLMENT_ANGLE_LABELS = ["center", "left", "right", "up", "down"]

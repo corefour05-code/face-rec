@@ -62,9 +62,29 @@
     <h3 style="margin-top:0;">Attendance by Class</h3>
     <canvas id="split-chart" height="220"></canvas>
   </div>
-  <div class="card">
-    <h3 style="margin-top:0;">Attendance by Period</h3>
-    <canvas id="period-chart" height="220"></canvas>
+  <div class="card" style="padding:0; overflow:hidden;">
+    <h3 style="margin:1.5rem 1.5rem 0;">Class Strength</h3>
+    <p style="color: var(--text-muted); margin:0.25rem 1.5rem 1rem;">
+      Total enrolled vs. present, per year/section, for the selected range.
+    </p>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Year</th><th>Section</th><th>Total Strength</th><th>Present</th><th>%</th></tr></thead>
+        <tbody>
+          {% for cs in class_strength %}
+          <tr>
+            <td>Year {{ cs.year }}</td>
+            <td>{{ cs.section }}</td>
+            <td>{{ cs.total }}</td>
+            <td><strong>{{ cs.present }}</strong></td>
+            <td>{{ cs.percent }}%</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:2rem;">No attendance for this range.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -152,15 +172,6 @@ new Chart(document.getElementById('split-chart'), {
     datasets: [{ data: pieValues, backgroundColor: pieColors }],
   },
   options: { plugins: { legend: { position: 'bottom' } } },
-});
-
-new Chart(document.getElementById('period-chart'), {
-  type: 'bar',
-  data: {
-    labels: {{ period_labels | tojson }},
-    datasets: [{ label: 'Attendance', data: {{ period_values | tojson }}, backgroundColor: '#077c3c' }],
-  },
-  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
 });
 
 new Chart(document.getElementById('lab-chart'), {
