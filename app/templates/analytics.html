@@ -69,18 +69,19 @@
     </p>
     <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>Year</th><th>Section</th><th>Total Strength</th><th>Present</th><th>%</th></tr></thead>
+        <thead><tr><th>Year</th><th>Section</th><th>Period</th><th>Total Strength</th><th>Present</th><th>%</th></tr></thead>
         <tbody>
           {% for cs in class_strength %}
           <tr>
             <td>Year {{ cs.year }}</td>
             <td>{{ cs.section }}</td>
+            <td>{{ cs.periods }}</td>
             <td>{{ cs.total }}</td>
             <td><strong>{{ cs.present }}</strong></td>
             <td>{{ cs.percent }}%</td>
           </tr>
           {% else %}
-          <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:2rem;">No attendance for this range.</td></tr>
+          <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No attendance for this range.</td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -180,8 +180,10 @@ def _class_strength(conn, from_date, to_date, lab_id):
     strength: dict = {(r["year"], r["section"] or "Unassigned"): r["total"] for r in strength_rows}
 
     sql = (
-        "SELECT DISTINCT a.roll_no, a.session_date, s.year AS year, s.section AS section "
+        "SELECT DISTINCT a.roll_no, a.session_date, s.year AS year, s.section AS section, "
+        "p.period_name AS period_name, p.start_time AS start_time "
         "FROM attendance a JOIN students s ON s.roll_no = a.roll_no "
+        "LEFT JOIN periods p ON p.id = a.in_period_id "
         "WHERE s.archived_at IS NULL AND a.session_date BETWEEN ? AND ?"
     )
     params: list = [from_date, to_date]
@@ -191,9 +193,12 @@ def _class_strength(conn, from_date, to_date, lab_id):
     rows = conn.execute(sql, params).fetchall()
 
     present: dict = defaultdict(set)
+    periods: dict = defaultdict(set)
     for r in rows:
         key = (r["year"], r["section"] or "Unassigned")
         present[key].add((r["roll_no"], r["session_date"]))
+        if r["period_name"]:
+            periods[key].add((r["start_time"] or "", r["period_name"]))
 
     # Only groups with at least one present student that day — not the
     # full roster of every year/section regardless of whether they had
@@ -203,12 +208,14 @@ def _class_strength(conn, from_date, to_date, lab_id):
         present_count = len(present_roll_dates)
         total = strength.get((year, section), 0)
         percent = round(present_count / total * 100, 1) if total else 0
+        group_periods = sorted(periods.get((year, section), set()))
         result.append({
             "year": year,
             "section": section,
             "total": total,
             "present": present_count,
             "percent": percent,
+            "periods": ", ".join(name for _, name in group_periods) or "-",
         })
     result.sort(key=lambda r: (r["year"], r["section"]))
     return result
